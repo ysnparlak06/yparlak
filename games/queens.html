@@ -78,12 +78,17 @@
 
   <script>
     const SIZE = 8;
+    // YENİ: Başarı takibi için global değişkenler ve süre limiti
+    let totalGames = 0;
+    let successfulGames = 0;
+    const TIME_LIMIT = 60; // 60 saniye (1 dakika)
+    
     let board = Array(SIZE).fill(-1);
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
     const overlay = document.getElementById('overlay');
-    const finalTimeEl = document.getElementById('finalTime');
+    // finalTimeEl artık kullanılmayacak, mesaj kutusunda hesaplanacak
 
     let startTime = null;
     let timerInterval = null;
@@ -110,15 +115,69 @@
         if(timerInterval) clearInterval(timerInterval);
         timerInterval = setInterval(updateTimer,1000);
     }
+    
     function updateTimer(){
         if(!startTime) return;
         const diff = Math.floor((Date.now()-startTime)/1000);
+        
+        // SÜRE KISITLAMASI KONTROLÜ
+        if (diff >= TIME_LIMIT) {
+            stopTimer();
+            // Süre dolduğunda otomatik olarak başarısızlığı kaydet ve bitir
+            endGame(false, TIME_LIMIT); 
+            return;
+        }
+
         const m = String(Math.floor(diff/60)).padStart(2,'0');
         const s = String(diff%60).padStart(2,'0');
         timerEl.textContent = `${m}:${s}`;
     }
+    
     function stopTimer(){
         if(timerInterval) clearInterval(timerInterval);
+    }
+
+    // YENİ: Oyun Sonlandırma ve Başarı Raporu Fonksiyonu
+    function endGame(isSuccessful, timeTaken) {
+        stopTimer();
+        totalGames++;
+        
+        // Başarı Mesajı Hesaplama
+        let message = '';
+        if (isSuccessful) {
+            successfulGames++;
+            const minutes = Math.floor(timeTaken / 60);
+            const seconds = timeTaken % 60;
+            const timeStr = (minutes > 0 ? `${minutes} dakika ` : '') + `${seconds} saniye`;
+            message = `Harika! Puzzle'ı **${timeStr}**'de çözdünüz.`;
+        } else {
+            message = `Süre Doldu! Bu puzzle'ı çözemediniz.`;
+        }
+        
+        // Başarı Oranı Hesaplama
+        const successRate = totalGames > 0 ? ((successfulGames / totalGames) * 100).toFixed(0) : 0;
+        
+        // Sonuç Mesajı
+        const finalMessage = `
+            <h2>${isSuccessful ? 'Tebrikler! 🎉' : 'Süre Doldu! ⌛'}</h2>
+            <p>${message}</p>
+            <p style="font-weight:bold; margin-top:15px;">
+                Başarı: ${successfulGames} başarılı / ${totalGames - successfulGames} başarısız
+            </p>
+            <p style="font-size:16px;">
+                Genel Başarı Oranı: **%${successRate}**
+            </p>
+            <button id="playAgain">Tekrar Oyna</button>
+        `;
+
+        // HTML içindeki mesajı ve düğmeyi güncelleyip overlay'i göster
+        document.querySelector('#overlay .msg').innerHTML = finalMessage;
+        // Yeni düğmenin olay işleyicisini burada tanımlıyoruz
+        document.getElementById('playAgain').addEventListener('click', ()=>{ 
+            overlay.style.display='none'; 
+            randomNewMap(); // Sıradaki haritayı yükler
+        });
+        overlay.style.display = 'flex';
     }
     
     // YENİ OYUN VE IZGARA ÇİZİMİ (Sıralı Harita Seçimi)
@@ -133,6 +192,7 @@
         timerEl.textContent = '00:00';
         stopTimer();
         drawGrid();
+        startTimer(); // Yeni oyunda süreyi başlat
     }
     
     function drawGrid(){
@@ -165,6 +225,9 @@
 
     // TIKLAMA OLAYI
     function onCellClick(){
+        // Süre dolduysa tıklamayı engelle
+        if (startTime && (Date.now() - startTime) / 1000 >= TIME_LIMIT) return; 
+        
         if(!startTime) startTimer();
 
         const r = +this.dataset.row, c = +this.dataset.col;
@@ -180,12 +243,10 @@
         checkWin();
     }
 
-    // TAHTA DOĞRULAMA (VALIDATION) - Sonsuz döngü hatası burada düzeltildi.
+    // TAHTA DOĞRULAMA (VALIDATION)
     function validateAndAnnotate(){
         const placed = board.filter(x=>x!==-1).length;
         const result = isBoardValid();
-        
-        // ÖNEMLİ DÜZELTME: Buradaki drawGrid() çağrısı sonsuz döngüye neden oluyordu. KALDIRILDI.
         
         if (result.isValid) {
             statusEl.innerHTML = `<span style="color:#11a346;">${placed} vezir yerleştirildi (Geçerli)</span>`;
@@ -225,7 +286,7 @@
             }
         }
 
-        // 3. Bitişik Tehdit Kontrolü (Yatay, Dikey ve Çapraz 1 Kare Mesafe)
+        // 3. Bitişik Tehdit Kontrolü (Yatay, Dikey ve Çapraz 1 Kare Mesafe) - ORİJİNAL KURAL KORUNMUŞTUR
         for (let i = 0; i < queens.length; i++) {
             for (let j = i + 1; j < queens.length; j++) {
                 const q1 = queens[i];
@@ -236,7 +297,6 @@
 
                 // Eğer iki vezir yatayda, dikeyde veya çaprazda hemen bitişikse (1 kare farkla)
                 if (rowDiff <= 1 && colDiff <= 1) {
-                    // Aynı hücrede olmadıklarından emin ol
                     if (rowDiff !== 0 || colDiff !== 0) { 
                         errorCells.push(q1, q2);
                         return { isValid: false, reason: 'Bitişik Tehdit (Yatay, Dikey VEYA Çapraz)' };
@@ -255,14 +315,14 @@
         
         // Kazanmak için: 1) 8 vezir olmalı VE 2) Tahta geçerli olmalı.
         if(placed === SIZE && validationResult.isValid){
-            stopTimer();
-            finalTimeEl.textContent = timerEl.textContent;
-            overlay.style.display = 'flex';
+            const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+            endGame(true, timeTaken);
         }
     }
 
     // KONTROL DÜĞMELERİ İŞLEYİCİLERİ
     document.getElementById('reset').addEventListener('click', ()=>{ 
+        // Reset sadece vezirleri kaldırır, süreyi devam ettirir/başlatır
         board = Array(SIZE).fill(-1); 
         errorCells = [];
         drawGrid(); 
@@ -270,10 +330,7 @@
     });
     // 'Yeni' düğmesi artık sıradaki haritayı yükler
     document.getElementById('newgame').addEventListener('click', randomNewMap); 
-    document.getElementById('playAgain').addEventListener('click', ()=>{ 
-        overlay.style.display='none'; 
-        randomNewMap(); // Tekrar oyna da sıradaki haritayı yükler
-    });
+    // playAgain butonu artık endGame fonksiyonunda tanımlanıyor.
 
     // İLK BAŞLANGIÇ: İlk kez çağrıldığında index -1'den 0'a geçer ve ilk haritayı yükler.
     randomNewMap();
