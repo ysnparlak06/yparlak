@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Queens (LinkedIn style) — Local</title>
+  <style>
+    :root{--size:56px;--gap:6px}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:0;background:#f6f7f9;color:#111;display:flex;align-items:center;justify-content:center;height:100vh}
+    h1{font-size:20px;margin:0 0 16px;text-align:center}
+    .container{display:flex;flex-direction:column;align-items:center;gap:20px}
+    .wrap{display:flex;gap:20px;align-items:flex-start;justify-content:center}
+    .board{display:grid;grid-template-columns:repeat(8,var(--size));grid-auto-rows:var(--size);gap:var(--gap);padding:12px;background:#fff;border-radius:12px;box-shadow:0 6px 18px rgba(20,30,40,0.08)}
+    .cell{display:flex;align-items:center;justify-content:center;border-radius:8px;position:relative;user-select:none;cursor:pointer;font-weight:700}
+    .cell .queen{font-size:22px}
+    .controls{max-width:360px}
+    button{display:inline-block;padding:10px 14px;border-radius:8px;border:0;background:#0b69ff;color:#fff;font-weight:600;margin:6px 6px 6px 0;cursor:pointer}
+    button.ghost{background:#eef1f6;color:#333;font-weight:600}
+    .info{background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 14px rgba(20,30,40,0.04)}
+    .rows{margin-top:8px}
+    .xmark{font-size:16px;color:rgba(0,0,0,0.25)}
+    footer{margin-top:12px;color:#666;font-size:13px;text-align:center}
+    /* region colors (8 regions) */
+    .r0{background:#fef3d6}
+    .r1{background:#fde2e2}
+    .r2{background:#f0e9ff}
+    .r3{background:#e6fbf4}
+    .r4{background:#fff0d6}
+    .r5{background:#e7f0ff}
+    .r6{background:#f7f7f8}
+    .r7{background:#f9f8e9}
+    #overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000}
+    #overlay .msg{background:#fff;padding:20px 30px;border-radius:12px;max-width:320px;text-align:center;box-shadow:0 8px 18px rgba(0,0,0,0.25)}
+    #timer{font-weight:bold;margin-left:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Queens</h1>
+    <div class="wrap">
+      <div>
+        <div id="board" class="board" aria-label="8x8 queens board"></div>
+        <footer>
+          <span><strong>Süre:</strong> <span id="timer">00:00</span></span>
+        </footer>
+      </div>
+
+      <div class="controls">
+        <div class="info">
+          <strong>Kontroller</strong>
+          <div class="rows">
+            <button id="reset">Reset</button>
+            <button id="hint" class="ghost">İpucu</button>
+            <button id="solve">Çöz</button>
+            <button id="newgame">Yeni</button>
+          </div>
+          <p style="margin:8px 0 0;font-size:14px">Kurallar: Her <em>satır</em>, <em>sütun</em> ve <em>renk bölgesi</em> yalnızca 1 vezir içermelidir. Vezirler (queen) birbiriyle yatay, dikey veya çapraz tehdit etmemelidir.</p>
+          <div style="margin-top:10px">
+            <div><strong>Durum:</strong> <span id="status">-</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="msg">
+      <h2>Tebrikler! 🎉</h2>
+      <p>Puzzle çözüldü.</p>
+      <p><strong>Süreniz:</strong> <span id="finalTime"></span></p>
+      <button id="playAgain">Tekrar Oyna</button>
+    </div>
+  </div>
+
+  <script>
+    const SIZE = 8;
+    let board = Array(SIZE).fill(-1);
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const timerEl = document.getElementById('timer');
+    const overlay = document.getElementById('overlay');
+    const finalTimeEl = document.getElementById('finalTime');
+
+    let startTime = null;
+    let timerInterval = null;
+
+    const regionMaps = [
+      [0,0,1,1,1,2,2,2, 0,0,1,1,1,2,2,2, 0,3,3,3,1,4,4,2, 0,3,3,3,4,4,4,2, 5,5,3,6,6,4,7,2, 5,5,6,6,6,7,7,7, 5,5,6,6,7,7,7,7, 5,5,5,6,6,6,7,7],
+      [0,1,1,1,2,2,2,3, 0,1,1,1,2,2,2,3, 0,0,4,4,2,5,5,3, 6,0,4,4,5,5,3,3, 6,6,4,7,5,5,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3]
+    ];
+    let regionMap = regionMaps[0];
+
+    function startTimer(){
+      startTime = Date.now();
+      if(timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(updateTimer,1000);
+    }
+
+    function updateTimer(){
+      if(!startTime) return;
+      const diff = Math.floor((Date.now()-startTime)/1000);
+      const m = String(Math.floor(diff/60)).padStart(2,'0');
+      const s = String(diff%60).padStart(2,'0');
+      timerEl.textContent = `${m}:${s}`;
+    }
+
+    function stopTimer(){
+      if(timerInterval) clearInterval(timerInterval);
+    }
+
+    function randomNewMap(){
+      const idx = Math.floor(Math.random()*regionMaps.length);
+      regionMap = regionMaps[idx];
+      board = Array(SIZE).fill(-1);
+      drawGrid();
+      startTimer();
+    }
+
+    function drawGrid(){
+      boardEl.innerHTML = '';
+      for(let r=0;r<SIZE;++r){
+        for(let c=0;c<SIZE;++c){
+          const cell = document.createElement('div');
+          cell.className = 'cell empty r' + regionMap[r*SIZE + c];
+          cell.dataset.row = r; cell.dataset.col = c;
+          const q = document.createElement('div'); q.className='queen';
+          if(board[r] === c){ q.textContent = '♕'; cell.appendChild(q); }
+          const x = document.createElement('div'); x.className='xmark'; x.textContent=''; cell.appendChild(x);
+          cell.addEventListener('click', onCellClick);
+          boardEl.appendChild(cell);
+        }
+      }
+      validateAndAnnotate();
+    }
+
+    function onCellClick(){
+      const r = +this.dataset.row, c = +this.dataset.col;
+      if(board[r] === c){ board[r] = -1; } else { board[r] = c; }
+      validateAndAnnotate();
+      drawGrid();
+      checkWin();
+    }
+
+    function validateAndAnnotate(){
+      const placed = board.filter(x=>x!==-1).length;
+      statusEl.textContent = `${placed} vezir yerleştirildi`;
+    }
+
+    function checkWin(){
+      const placed = board.filter(x=>x!==-1).length;
+      if(placed===SIZE){
+        stopTimer();
+        finalTimeEl.textContent = timerEl.textContent;
+        overlay.style.display = 'flex';
+      }
+    }
+
+    document.getElementById('reset').addEventListener('click', ()=>{ board = Array(SIZE).fill(-1); drawGrid(); startTimer(); });
+    document.getElementById('hint').addEventListener('click', ()=>{ alert('İpucu özelliği bu versiyonda basitleştirildi.'); });
+    document.getElementById('solve').addEventListener('click', ()=>{ alert('Çözüm özelliği bu versiyonda kapalı.'); });
+    document.getElementById('newgame').addEventListener('click', ()=>{ randomNewMap(); });
+    document.getElementById('playAgain').addEventListener('click', ()=>{ overlay.style.display='none'; randomNewMap(); });
+
+    // ilk oyun başlat
+    randomNewMap();
+  </script>
+</body>
+</html>
