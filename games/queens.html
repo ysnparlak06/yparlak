@@ -10,7 +10,7 @@
     h1{font-size:20px;margin:0 0 16px;text-align:center}
     .container{display:flex;flex-direction:column;align-items:center;gap:20px}
     .wrap{display:flex;gap:20px;align-items:flex-start;justify-content:center}
-    .board{display:grid;grid-template-columns:repeat(8,var(--size));grid-auto-rows:var(--size);gap:var(--gap);padding:12px;background:#fff;border-radius:12px;box-shadow:0 6px 18px rgba(20,30,40,0.08)}
+    .board{display:grid;grid-template-columns:repeat(8,var(--size));grid-auto-rows:var(--size);gap:var(--gap);padding:12px;background:#000;border-radius:12px;box-shadow:0 6px 18px rgba(20,30,40,0.08)}
     .cell{display:flex;align-items:center;justify-content:center;border-radius:8px;position:relative;user-select:none;cursor:pointer;font-weight:700}
     .cell .queen{font-size:22px}
     .controls{max-width:360px}
@@ -21,17 +21,23 @@
     .xmark{font-size:16px;color:rgba(0,0,0,0.25)}
     footer{margin-top:12px;color:#666;font-size:13px;text-align:center}
     /* region colors (8 regions) */
-    .r0{background:#fef3d6}
-    .r1{background:#fde2e2}
-    .r2{background:#f0e9ff}
-    .r3{background:#e6fbf4}
-    .r4{background:#fff0d6}
-    .r5{background:#e7f0ff}
-    .r6{background:#f7f7f8}
-    .r7{background:#f9f8e9}
+    .r0{background:#ffe04b}
+    .r1{background:#62efea}
+    .r2{background:#c387e0}
+    .r3{background:#8acc6d}
+    .r4{background:#ff7b60}
+    .r5{background:#729aec}
+    .r6{background:#b9b29e}
+    .r7{background:#ffc992}
     #overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000}
     #overlay .msg{background:#fff;padding:20px 30px;border-radius:12px;max-width:320px;text-align:center;box-shadow:0 8px 18px rgba(0,0,0,0.25)}
     #timer{font-weight:bold;margin-left:8px}
+      .cell.error-cell {
+   box-shadow: 0 0 0 3px #d14b3d inset; /* Kırmızı kenarlık */
+  }
+  .cell.error-cell .queen {
+   color: #d14b3d; /* Vezir rengini kırmızı yap */
+  }
   </style>
 </head>
 <body>
@@ -39,7 +45,7 @@
     <h1>Queens</h1>
     <div class="wrap">
       <div>
-        <div id="board" class="board" aria-label="8x8 queens board"></div>
+        <div id="board" class="board" aria-label="10x10 queens board"></div>
         <footer>
           <span><strong>Süre:</strong> <span id="timer">00:00</span></span>
         </footer>
@@ -50,8 +56,6 @@
           <strong>Kontroller</strong>
           <div class="rows">
             <button id="reset">Reset</button>
-            <button id="hint" class="ghost">İpucu</button>
-            <button id="solve">Çöz</button>
             <button id="newgame">Yeni</button>
           </div>
           <p style="margin:8px 0 0;font-size:14px">Kurallar: Her <em>satır</em>, <em>sütun</em> ve <em>renk bölgesi</em> yalnızca 1 vezir içermelidir. Vezirler (queen) birbiriyle yatay, dikey veya çapraz tehdit etmemelidir.</p>
@@ -83,86 +87,196 @@
 
     let startTime = null;
     let timerInterval = null;
+    let errorCells = []; 
+    // HARİTA DEĞİŞİKLİĞİ: Sıralı yükleme için index'i -1'den başlatıyoruz.
+    let currentMapIndex = -1; 
 
+    // BÖLGE HARİTALARI
     const regionMaps = [
-      [0,0,1,1,1,2,2,2, 0,0,1,1,1,2,2,2, 0,3,3,3,1,4,4,2, 0,3,3,3,4,4,4,2, 5,5,3,6,6,4,7,2, 5,5,6,6,6,7,7,7, 5,5,6,6,7,7,7,7, 5,5,5,6,6,6,7,7],
-      [0,1,1,1,2,2,2,3, 0,1,1,1,2,2,2,3, 0,0,4,4,2,5,5,3, 6,0,4,4,5,5,3,3, 6,6,4,7,5,5,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3]
+        [0,0,1,1,1,2,2,2, 0,0,1,1,1,2,2,2, 0,3,3,3,1,4,4,2, 0,3,3,3,4,4,4,2, 5,5,3,6,6,4,7,2, 5,5,6,6,6,7,7,7, 5,5,6,6,7,7,7,7, 5,5,5,6,6,6,7,7],
+        [0,1,1,1,2,2,2,3, 0,1,1,1,2,2,2,3, 0,0,4,4,2,5,5,3, 6,0,4,4,5,5,3,3, 6,6,4,7,5,5,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3, 6,6,7,7,7,7,7,3],
+        [0,0,3,3,3,2,2,2, 0,4,3,4,3,5,2,2, 0,4,3,4,3,2,2,2, 0,4,4,4,3,6,7,2, 0,4,4,4,3,6,7,7, 0,4,1,4,3,6,7,7, 1,4,1,4,3,6,6,7, 1,1,1,1,7,7,7,7],
+        [6,4,4,4,3,4,4,0, 6,6,6,4,3,3,4,0, 4,4,4,4,4,3,4,0, 7,7,7,4,4,4,4,0, 7,4,4,4,4,4,4,4, 4,4,4,4,5,4,4,1, 2,2,4,5,5,4,1,1, 2,2,4,5,4,4,4,1],
+        [3,3,3,3,3,0,3,3, 3,3,3,3,0,0,0,3, 1,3,3,2,4,4,4,3, 1,1,3,2,2,4,3,3, 1,3,3,2,3,3,3,6, 3,3,7,7,7,3,6,6, 3,3,3,7,3,3,5,6, 3,3,3,3,3,5,5,5],
+        [6,6,6,6,6,6,6,6, 6,6,2,2,2,0,6,6, 6,6,2,0,2,0,6,6, 1,1,0,0,0,0,2,2, 1,4,4,0,0,7,7,2, 1,1,4,0,0,0,7,2, 5,4,4,5,0,7,7,2, 5,5,5,5,0,0,2,2],
+        [6,6,2,2,6,6,6,6, 5,6,2,2,1,1,1,6, 5,6,2,2,1,1,1,6, 5,6,6,6,6,6,7,6, 0,0,3,3,3,6,7,6, 0,0,6,6,6,6,7,6, 0,0,6,6,6,6,6,6, 4,4,4,6,6,6,6,6],
+        [0,0,1,1,1,1,1,1, 0,0,0,0,0,0,0,1, 2,2,2,2,2,2,0,0, 2,3,3,3,3,3,3,4, 3,3,4,4,4,4,4,4, 3,4,4,5,5,5,5,5, 5,5,5,5,5,6,6,6, 5,6,6,6,6,6,7,7]
     ];
     let regionMap = regionMaps[0];
 
+    // ZAMANLAYICI FONKSİYONLARI
     function startTimer(){
-      startTime = Date.now();
-      if(timerInterval) clearInterval(timerInterval);
-      timerInterval = setInterval(updateTimer,1000);
+        if(!startTime) startTime = Date.now();
+        if(timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(updateTimer,1000);
     }
-
     function updateTimer(){
-      if(!startTime) return;
-      const diff = Math.floor((Date.now()-startTime)/1000);
-      const m = String(Math.floor(diff/60)).padStart(2,'0');
-      const s = String(diff%60).padStart(2,'0');
-      timerEl.textContent = `${m}:${s}`;
+        if(!startTime) return;
+        const diff = Math.floor((Date.now()-startTime)/1000);
+        const m = String(Math.floor(diff/60)).padStart(2,'0');
+        const s = String(diff%60).padStart(2,'0');
+        timerEl.textContent = `${m}:${s}`;
     }
-
     function stopTimer(){
-      if(timerInterval) clearInterval(timerInterval);
+        if(timerInterval) clearInterval(timerInterval);
     }
-
+    
+    // YENİ OYUN VE IZGARA ÇİZİMİ (Sıralı Harita Seçimi)
     function randomNewMap(){
-      const idx = Math.floor(Math.random()*regionMaps.length);
-      regionMap = regionMaps[idx];
-      board = Array(SIZE).fill(-1);
-      drawGrid();
-      startTimer();
-    }
-
-    function drawGrid(){
-      boardEl.innerHTML = '';
-      for(let r=0;r<SIZE;++r){
-        for(let c=0;c<SIZE;++c){
-          const cell = document.createElement('div');
-          cell.className = 'cell empty r' + regionMap[r*SIZE + c];
-          cell.dataset.row = r; cell.dataset.col = c;
-          const q = document.createElement('div'); q.className='queen';
-          if(board[r] === c){ q.textContent = '♕'; cell.appendChild(q); }
-          const x = document.createElement('div'); x.className='xmark'; x.textContent=''; cell.appendChild(x);
-          cell.addEventListener('click', onCellClick);
-          boardEl.appendChild(cell);
-        }
-      }
-      validateAndAnnotate();
-    }
-
-    function onCellClick(){
-      const r = +this.dataset.row, c = +this.dataset.col;
-      if(board[r] === c){ board[r] = -1; } else { board[r] = c; }
-      validateAndAnnotate();
-      drawGrid();
-      checkWin();
-    }
-
-    function validateAndAnnotate(){
-      const placed = board.filter(x=>x!==-1).length;
-      statusEl.textContent = `${placed} vezir yerleştirildi`;
-    }
-
-    function checkWin(){
-      const placed = board.filter(x=>x!==-1).length;
-      if(placed===SIZE){
+        // Sıralı olarak bir sonraki haritayı seçer ve döngüye alır
+        currentMapIndex = (currentMapIndex + 1) % regionMaps.length;
+        regionMap = regionMaps[currentMapIndex];
+        
+        board = Array(SIZE).fill(-1);
+        errorCells = [];
+        startTime = null;
+        timerEl.textContent = '00:00';
         stopTimer();
-        finalTimeEl.textContent = timerEl.textContent;
-        overlay.style.display = 'flex';
-      }
+        drawGrid();
+    }
+    
+    function drawGrid(){
+        boardEl.innerHTML = '';
+        for(let r=0;r<SIZE;++r){
+            for(let c=0;c<SIZE;++c){
+                const cell = document.createElement('div');
+                // Harita index'i -1 olduğu için ilk yüklemede map 0'ı kullanır
+                cell.className = 'cell r' + regionMap[r*SIZE + c]; 
+                cell.dataset.row = r; cell.dataset.col = c;
+                    
+                if(errorCells.some(err => err.r === r && err.c === c)) {
+                    cell.classList.add('error-cell');
+                }
+
+                cell.addEventListener('click', onCellClick);
+                
+                if(board[r] === c){ 
+                    const q = document.createElement('div');
+                    q.className='queen';
+                    q.textContent = '♕';
+                    cell.appendChild(q);
+                } 
+
+                boardEl.appendChild(cell);
+            }
+        }
+        validateAndAnnotate();
     }
 
-    document.getElementById('reset').addEventListener('click', ()=>{ board = Array(SIZE).fill(-1); drawGrid(); startTimer(); });
-    document.getElementById('hint').addEventListener('click', ()=>{ alert('İpucu özelliği bu versiyonda basitleştirildi.'); });
-    document.getElementById('solve').addEventListener('click', ()=>{ alert('Çözüm özelliği bu versiyonda kapalı.'); });
-    document.getElementById('newgame').addEventListener('click', ()=>{ randomNewMap(); });
-    document.getElementById('playAgain').addEventListener('click', ()=>{ overlay.style.display='none'; randomNewMap(); });
+    // TIKLAMA OLAYI
+    function onCellClick(){
+        if(!startTime) startTimer();
 
-    // ilk oyun başlat
+        const r = +this.dataset.row, c = +this.dataset.col;
+        
+        if(board[r] === c){ 
+            board[r] = -1;
+        } else { 
+            board[r] = c;
+        }
+        
+        errorCells = [];
+        drawGrid();
+        checkWin();
+    }
+
+    // TAHTA DOĞRULAMA (VALIDATION) - Sonsuz döngü hatası burada düzeltildi.
+    function validateAndAnnotate(){
+        const placed = board.filter(x=>x!==-1).length;
+        const result = isBoardValid();
+        
+        // ÖNEMLİ DÜZELTME: Buradaki drawGrid() çağrısı sonsuz döngüye neden oluyordu. KALDIRILDI.
+        
+        if (result.isValid) {
+            statusEl.innerHTML = `<span style="color:#11a346;">${placed} vezir yerleştirildi (Geçerli)</span>`;
+        } else {
+            statusEl.innerHTML = `<span style="color:#d14b3d;">${placed} vezir yerleştirildi (HATALI: ${result.reason})</span>`;
+        }
+    }
+
+    function isBoardValid() {
+        const queens = [];
+        for (let r = 0; r < SIZE; r++) {
+            if (board[r] !== -1) {
+                queens.push({ r: r, c: board[r] });
+            }
+        }
+        
+        errorCells = [];
+        
+        // 1. Sütun Kontrolü (Dikey)
+        const colCount = new Array(SIZE).fill(0);
+        for (const q of queens) {
+            colCount[q.c]++;
+            if (colCount[q.c] > 1) {
+                queens.filter(otherQ => otherQ.c === q.c).forEach(err => errorCells.push(err));
+                return { isValid: false, reason: 'Sütun Çatışması (Dikey)' };
+            }
+        }
+
+        // 2. Bölge Kontrolü
+        const regionCount = {};
+        for (const q of queens) {
+            const region = regionMap[q.r * SIZE + q.c];
+            regionCount[region] = (regionCount[region] || 0) + 1;
+            if (regionCount[region] > 1) {
+                queens.filter(otherQ => regionMap[otherQ.r * SIZE + otherQ.c] === region).forEach(err => errorCells.push(err));
+                return { isValid: false, reason: 'Bölge Çatışması' };
+            }
+        }
+
+        // 3. Bitişik Tehdit Kontrolü (Yatay, Dikey ve Çapraz 1 Kare Mesafe)
+        for (let i = 0; i < queens.length; i++) {
+            for (let j = i + 1; j < queens.length; j++) {
+                const q1 = queens[i];
+                const q2 = queens[j];
+                
+                const rowDiff = Math.abs(q1.r - q2.r);
+                const colDiff = Math.abs(q1.c - q2.c);
+
+                // Eğer iki vezir yatayda, dikeyde veya çaprazda hemen bitişikse (1 kare farkla)
+                if (rowDiff <= 1 && colDiff <= 1) {
+                    // Aynı hücrede olmadıklarından emin ol
+                    if (rowDiff !== 0 || colDiff !== 0) { 
+                        errorCells.push(q1, q2);
+                        return { isValid: false, reason: 'Bitişik Tehdit (Yatay, Dikey VEYA Çapraz)' };
+                    }
+                }
+            }
+        }
+
+        return { isValid: true, reason: '' };
+    }
+    
+    // KAZANMA KONTROLÜ
+    function checkWin(){
+        const placed = board.filter(x=>x!==-1).length;
+        const validationResult = isBoardValid();
+        
+        // Kazanmak için: 1) 8 vezir olmalı VE 2) Tahta geçerli olmalı.
+        if(placed === SIZE && validationResult.isValid){
+            stopTimer();
+            finalTimeEl.textContent = timerEl.textContent;
+            overlay.style.display = 'flex';
+        }
+    }
+
+    // KONTROL DÜĞMELERİ İŞLEYİCİLERİ
+    document.getElementById('reset').addEventListener('click', ()=>{ 
+        board = Array(SIZE).fill(-1); 
+        errorCells = [];
+        drawGrid(); 
+        startTimer();
+    });
+    // 'Yeni' düğmesi artık sıradaki haritayı yükler
+    document.getElementById('newgame').addEventListener('click', randomNewMap); 
+    document.getElementById('playAgain').addEventListener('click', ()=>{ 
+        overlay.style.display='none'; 
+        randomNewMap(); // Tekrar oyna da sıradaki haritayı yükler
+    });
+
+    // İLK BAŞLANGIÇ: İlk kez çağrıldığında index -1'den 0'a geçer ve ilk haritayı yükler.
     randomNewMap();
-  </script>
+</script>
 </body>
 </html>
