@@ -9,6 +9,28 @@
 (function() {
   "use strict";
 
+  function ensureLanguageSwitcher() {
+    if (document.querySelector('.language-switcher')) return;
+
+    const isEnglishPage = window.location.pathname.endsWith('/index_en.html');
+    const switcher = document.createElement('div');
+    switcher.className = 'language-switcher';
+    switcher.setAttribute('aria-label', 'Language selection');
+    switcher.innerHTML = `
+      <a class="language-button${isEnglishPage ? '' : ' is-active'}" href="index.html" lang="tr"${isEnglishPage ? '' : ' aria-current="page"'}>TR</a>
+      <a class="language-button${isEnglishPage ? ' is-active' : ''}" href="index_en.html" lang="en"${isEnglishPage ? ' aria-current="page"' : ''}>EN</a>
+    `;
+    document.body.appendChild(switcher);
+  }
+
+  ensureLanguageSwitcher();
+
+  const englishResume = document.querySelector('#resume-en');
+  const skillsSection = document.querySelector('#skills');
+  if (englishResume && skillsSection) {
+    skillsSection.insertAdjacentElement('afterend', englishResume);
+  }
+
   /**
    * Header toggle
    */
@@ -106,11 +128,6 @@
   }
 
   /**
-   * Initiate Pure Counter
-   */
-  new PureCounter();
-
-  /**
    * Animate the skills items on reveal
    */
   let skillsAnimation = document.querySelectorAll('.skills-animation');
@@ -166,25 +183,6 @@
     });
 
   });
-
-  /**
-   * Init swiper sliders
-   */
-  function initSwiper() {
-    document.querySelectorAll(".init-swiper").forEach(function(swiperElement) {
-      let config = JSON.parse(
-        swiperElement.querySelector(".swiper-config").innerHTML.trim()
-      );
-
-      if (swiperElement.classList.contains("swiper-tab")) {
-        initSwiperWithCustomPagination(swiperElement, config);
-      } else {
-        new Swiper(swiperElement, config);
-      }
-    });
-  }
-
-  window.addEventListener("load", initSwiper);
 
   /**
    * Correct scrolling position upon page load for URLs containing hash links.
